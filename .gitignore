@@ -1,0 +1,14 @@
+.aider*
+*.json
+frames/*
+!frames/README.md
+chat_history.md
+chat_history.json
+*.gbc
+*.gbc.state
+*.gb
+*.gb.state
+*.gb.ram
+
+.env
+.git
