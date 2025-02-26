@@ -27,12 +27,12 @@
         },
         "anthropic": {
             "hashes": [
-                "sha256:1445ec9be78d2de7ea51b4d5acd3574e414aea97ef903d0ecbb57bec806aaa49",
-                "sha256:eac3d43271d02321a57c3ca68aca84c3d58873e8e72d1433288adee2d46b745b"
+                "sha256:452f4ca0c56ffab8b6ce9928bf8470650f88106a7001b250895eb65c54cfa44c",
+                "sha256:61b712a56308fce69f04d92ba0230ab2bc187b5bce17811d400843a8976bb67f"
             ],
             "index": "pip_conf_index_global",
             "markers": "python_version >= '3.8'",
-            "version": "==0.46.0"
+            "version": "==0.47.2"
         },
         "anyio": {
             "hashes": [
