@@ -2,6 +2,8 @@
 
 An AI-powered game playing agent using Claude and PyBoy
 
+![Game Screenshot](image.png)
+
 [![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/release/python-31012/)
 [![PyBoy](https://img.shields.io/badge/emulator-PyBoy-green.svg)](https://github.com/Baekalfen/PyBoy)
 [![Claude](https://img.shields.io/badge/AI-Claude%203.7-purple.svg)](https://anthropic.com/claude)
