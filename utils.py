@@ -16,8 +16,8 @@ Single Press: Press a button once, e.g., 'A' (press A once).
 Hold: Press and hold a button for a specified number of ticks, e.g., 'A2' (press and hold A for 2 ticks).
 Simultaneous Press: Press multiple buttons simultaneously once, e.g., 'AB' (press A and B simultaneously once).
 Wait: Wait for a specified number of ticks without pressing any buttons, e.g., 'W' (wait for 1 tick) or 'W2' (wait for 2 ticks).
-Wait then Press: Wait for a specified number of ticks, then press a button once, e.g., 'W →' (wait for 1 tick, then press '→' once).
-Repeated Actions: To repeat an action for multiple ticks, use a number before the button symbol, e.g., '→2' (move right for 2 ticks). Do not use spaces or multiple button symbols to repeat actions, as only the first symbol will be executed.
+Wait then Press: Wait for a specified number of ticks, then press a button once, e.g., 'W R' (wait for 1 tick, then press 'R' once).
+Repeated Actions: To repeat an action for multiple ticks, use a number after the button symbol, e.g., 'R2' (move right for 2 ticks). Do not use spaces or multiple button symbols to repeat actions, as only the first symbol will be executed.
 </format>
 
 <rules>
@@ -44,11 +44,11 @@ W: Wait
 </symbols>
 
 <examples>
-Incorrect: '→→ A ↑↑↑ ↑B'
-Correct: '→2 A ↑2 ↑B'
+Incorrect: 'RR A UUU UB'
+Correct: 'R2 A U3 UB'
 
-Incorrect: '←↑←A ↓→↓A ↑→↑A'
-Correct: '← ↑ ← A ↓ → ↓ A ↑ → ↑ A'
+Incorrect: 'LULA DRDA URUA'
+Correct: 'L U L A D R D A U R U A'
 </examples>
 """
 
@@ -97,22 +97,38 @@ def parse_sequence(sequence):
     
     for token in tokens:
         if token.startswith('W'):
+            # Extract the number after W, if any
             if len(token) > 1:
-                duration = int(token[1:])
+                try:
+                    duration = int(token[1:])
+                except ValueError:
+                    raise ValueError(f"Invalid wait duration: {token[1:]}")
             else:
                 duration = 1
             actions.append(('W', duration))
         else:
+            # Initialize variables
             buttons = ''
-            duration = 1
+            duration_str = ''
             
-            for char in token:
-                if char.isdigit():
-                    duration = int(char)
-                elif char in controls_mapping or char == '+':
-                    buttons += char
+            # First, find where the buttons end and the digits begin
+            i = 0
+            while i < len(token) and not token[i].isdigit():
+                if token[i] in controls_mapping or token[i] == '+':
+                    buttons += token[i]
                 else:
-                    raise ValueError(f"Invalid character: {char}")
+                    raise ValueError(f"Invalid character: {token[i]}")
+                i += 1
+            
+            # Extract duration
+            if i < len(token):
+                duration_str = token[i:]
+                try:
+                    duration = int(duration_str)
+                except ValueError:
+                    raise ValueError(f"Invalid duration: {duration_str}")
+            else:
+                duration = 1
             
             actions.append((buttons, duration))
     

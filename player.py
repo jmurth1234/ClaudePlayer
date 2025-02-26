@@ -27,6 +27,7 @@ class Config:
     MODEL = "claude-3-7-sonnet-20250219"
     MAX_TOKENS = 20000
     THINKING_BUDGET = 16000
+    SUMMARY_INTERVAL = 30
 
 # -----------------------------------------------------------------------------
 # Logging Setup
@@ -43,6 +44,7 @@ def setup_logging():
         ]
     )
 
+
 # -----------------------------------------------------------------------------
 # Game State Management
 # -----------------------------------------------------------------------------
@@ -54,7 +56,14 @@ class GameState:
         self.identified_game = None
         self.current_goal = None
         self.memory_items = []
-    
+        self.turn_count = 0
+        self.summary = ""
+        self.complete_message_history = []  # Store ALL messages without truncation
+
+    def add_to_complete_history(self, message):
+        """Add a message to the complete history archive."""
+        self.complete_message_history.append(message)
+
     def format_memory_for_prompt(self) -> str:
         """Format memory items for inclusion in the system prompt."""
         if not self.memory_items:
@@ -72,12 +81,20 @@ class GameState:
     
     def get_current_state_summary(self) -> str:
         """Get a summary of the current game state."""
-        return f"Current game: {self.identified_game or 'Not identified'}\nCurrent goal: {self.current_goal or 'Not set'}\n{self.format_memory_for_prompt()}"
+        state_summary = f"Current game: {self.identified_game or 'Not identified'}\nCurrent goal: {self.current_goal or 'Not set'}\n{self.format_memory_for_prompt()}"
+        
+        # Include the AI-generated summary if available
+        if self.summary:
+            state_summary += "\n\n=== GAME PROGRESS SUMMARY ===\n" + self.summary
+            
+        return state_summary
     
     def log_state(self):
         """Log the current game state."""
         logging.info(f"GAME: {self.identified_game or 'Not identified'}")
         logging.info(f"GOAL: {self.current_goal or 'Not set'}")
+        logging.info(f"TURN: {self.turn_count}")
+        logging.info(f"SUMMARY: {self.summary}")
         
         if self.memory_items:
             logging.info("MEMORY ITEMS:")
@@ -88,6 +105,14 @@ class GameState:
                     logging.info(f"  [{i}] {item['item']}")
                 else:
                     logging.info(f"  [{i}] {item}")
+
+    def increment_turn(self):
+        """Increment the turn counter."""
+        self.turn_count += 1
+
+    def update_summary(self, summary: str):
+        """Update the summary."""
+        self.summary = summary
 
 # -----------------------------------------------------------------------------
 # Tool Registry
@@ -390,12 +415,111 @@ class ClaudeInterface:
             logging.error(f"ERROR in Claude API request: {str(e)}")
             raise
 
+
 # -----------------------------------------------------------------------------
-# Debug Utilities
+# Summary Generation
 # -----------------------------------------------------------------------------
 
-class DebugUtils:
-    """Utilities for debugging."""
+class SummaryGenerator:
+    """Generates game summaries to maintain context over long sessions."""
+    
+    def __init__(self, client: ClaudeInterface, game_state: GameState, tool_registry: ToolRegistry):
+        """Initialize the summary generator."""
+        self.client = client
+        self.game_state = game_state
+        self.tool_registry = tool_registry
+
+        self.previous_summary = ""
+        self.summary_count = 0
+        
+    def generate_summary(self, chat_history: List[Dict[str, Any]]) -> str:
+        """
+        Generate a summary of the gameplay based on chat history and previous summary.
+        
+        Args:
+            chat_history: Complete chat history to analyze (not truncated)
+            
+        Returns:
+            A comprehensive summary of the gameplay
+        """
+        self.summary_count += 1
+        logging.info(f"Generating gameplay summary #{self.summary_count}")
+        
+        # Create a system prompt for the summary generation
+        system_prompt = """You are an AI analyzing a gameplay session. Your task is to create a comprehensive summary of what has happened so far to maintain context across gameplay sessions.
+
+Your summary should include three clearly labeled sections:
+1. GAMEPLAY SUMMARY: Key events, achievements, progress, important story developments, etc
+2. CRITICAL REVIEW: Analysis of the last 30 steps of gameplay - what worked well, what could be improved, and any strategic patterns
+3. NEXT STEPS: Clear recommendations for immediate next goals and actions
+
+Write in a concise but comprehensive manner. Focus on information that would be most useful for continued gameplay.
+
+You are given tools as a reference to help you create your summary. DO NOT CALL ANY TOOLS.
+"""
+        
+        # Create a structured message that includes the previous summary and chat history
+        messages = []
+
+        # For summary generation, we need to truncate to a reasonable number to avoid context limits
+        # Get the last 60 messages (twice the regular context window)
+        recent_history = chat_history[-60:] if len(chat_history) > 60 else chat_history
+        messages.extend(recent_history)
+        
+        # Prepare the full chat history in its original structure
+        messages.append({
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Please analyze the gameplay session and create a comprehensive summary according to the instructions in the system prompt."
+                }
+            ]
+        })
+
+        # Add the previous summary to the last user message
+        if self.previous_summary:
+            messages[-1]["content"].append({
+                "type": "text",
+                "text": f"Here is the previous gameplay summary:\n\n{self.game_state.summary}"
+            })
+
+        messages[-1]["content"].append({
+            "type": "text",
+            "text": f"Here is the current game state:\n\n{self.game_state.get_current_state_summary()}"
+        })
+
+        try:
+            response = self.client.send_request(system_prompt, messages, self.tool_registry.get_tools())
+
+            MessageUtils.debug_message_structure(response)
+
+            message_content = MessageUtils.print_and_extract_message_content(response)
+            text_blocks = message_content["text_blocks"]
+
+            summary = ""
+
+            # loop through text blocks and add to summary
+            for block in text_blocks:
+                summary += block.text
+
+            logging.info(f"Summary generated successfully ({len(summary)} chars)")
+            
+            # Save this as the previous summary for next time
+            self.previous_summary = summary
+            return summary
+            
+        except Exception as e:
+            error_msg = f"ERROR generating summary: {str(e)}"
+            logging.error(error_msg)
+            return f"Summary generation failed: {str(e)}"
+
+# -----------------------------------------------------------------------------
+# Message Utilities
+# -----------------------------------------------------------------------------
+
+class MessageUtils:
+    """Utilities for analyzing and logging message structures."""
     
     @staticmethod
     def debug_message_structure(message):
@@ -423,6 +547,42 @@ class DebugUtils:
                 logging.info(f"Block {i}: type={block_type}")
         
         logging.info("===== END DEBUG: MESSAGE STRUCTURE =====")
+
+    @staticmethod
+    def print_and_extract_message_content(message):
+        """Extract message text and print it."""
+        # Extract and process tool use blocks
+        content_blocks = message.content
+
+        tool_use_blocks = [block for block in content_blocks if block.type == "tool_use"]
+        text_blocks = [block for block in content_blocks if block.type == "text"]
+        thinking_blocks = [block for block in content_blocks if block.type == "thinking"]
+        
+        # Log Claude's thinking if available
+        if thinking_blocks:
+            logging.info("CLAUDE'S THINKING:")
+            for block in thinking_blocks:
+                logging.info(f"  {block.thinking}")
+        
+        # Log Claude's text response
+        if text_blocks:
+            logging.info("CLAUDE'S RESPONSE:")
+            for block in text_blocks:
+                logging.info(f"  {block.text}")
+        
+        # Log tool usage
+        if tool_use_blocks:
+            logging.info("TOOLS USED:")
+            for block in tool_use_blocks:
+                tool_input_str = json.dumps(block.input, indent=2)
+                logging.info(f"  Tool: {block.name}")
+                logging.info(f"  Input: {tool_input_str}")
+
+        return {
+            "text_blocks": text_blocks,
+            "tool_use_blocks": tool_use_blocks,
+            "thinking_blocks": thinking_blocks
+        }
 
 # -----------------------------------------------------------------------------
 # Game Agent
@@ -456,6 +616,9 @@ class GameAgent:
         
         # Initialize Claude interface
         self.claude = ClaudeInterface()
+
+        # Initialize summary generator
+        self.summary_generator = SummaryGenerator(self.claude, self.game_state, self.tool_registry)
         
         # Initialize chat history
         self.chat_history = []
@@ -463,8 +626,19 @@ class GameAgent:
     def run_turn(self):
         """Run a single turn of the game."""
         # Log the beginning of a new turn
+
+        # Increment turn counter
+        self.game_state.increment_turn()
+
         logging.info(f"======= NEW TURN: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} =======")
         self.game_state.log_state()
+
+        # Check if we need to generate a summary
+        if self.game_state.turn_count % Config.SUMMARY_INTERVAL == 0 and self.game_state.turn_count > 0:
+            logging.info(f"Generating summary at turn {self.game_state.turn_count}")
+            # Use the complete message history for summary generation
+            summary = self.summary_generator.generate_summary(self.game_state.complete_message_history)
+            self.game_state.update_summary(summary)
         
         # Capture current screenshot
         screenshot = take_screenshot(self.pyboy, True)
@@ -476,10 +650,14 @@ class GameAgent:
         
         # Add user message to chat history if it's the first turn
         if len(self.chat_history) == 0:
-            self.chat_history.append({"role": "user", "content": user_content})
+            user_message = {"role": "user", "content": user_content}
+            self.chat_history.append(user_message)
+            self.game_state.add_to_complete_history(user_message)
         else:
             current_memory = self.game_state.get_current_state_summary()
-            self.chat_history.append({"role": "user", "content": [{"type": "text", "text": current_memory}]})
+            user_message = {"role": "user", "content": [{"type": "text", "text": current_memory}]}
+            self.chat_history.append(user_message)
+            self.game_state.add_to_complete_history(user_message)
         
         try:
             # Generate system prompt
@@ -492,37 +670,17 @@ class GameAgent:
             message = self.claude.send_request(system_prompt, self.chat_history, tools)
             
             # Debug message structure
-            DebugUtils.debug_message_structure(message)
+            MessageUtils.debug_message_structure(message)
             
             # Get assistant response and add to chat history
             assistant_content = message.content
-            self.chat_history.append({"role": "assistant", "content": assistant_content})
+            assistant_message = {"role": "assistant", "content": assistant_content}
+            self.chat_history.append(assistant_message)
+            self.game_state.add_to_complete_history(assistant_message)
             
-            # Extract and process tool use blocks
-            tool_use_blocks = [block for block in assistant_content if block.type == "tool_use"]
-            text_blocks = [block for block in assistant_content if block.type == "text"]
-            thinking_blocks = [block for block in assistant_content if block.type == "thinking"]
-            
-            # Log Claude's thinking if available
-            if thinking_blocks:
-                logging.info("CLAUDE'S THINKING:")
-                for block in thinking_blocks:
-                    logging.info(f"  {block.thinking}")
-            
-            # Log Claude's text response
-            if text_blocks:
-                logging.info("CLAUDE'S RESPONSE:")
-                for block in text_blocks:
-                    logging.info(f"  {block.text}")
-            
-            # Log tool usage
-            if tool_use_blocks:
-                logging.info("TOOLS USED:")
-                for block in tool_use_blocks:
-                    tool_input_str = json.dumps(block.input, indent=2)
-                    logging.info(f"  Tool: {block.name}")
-                    logging.info(f"  Input: {tool_input_str}")
-            
+            message_content = MessageUtils.print_and_extract_message_content(message)
+            tool_use_blocks = message_content["tool_use_blocks"]
+
             # Process tool use blocks
             tool_results = []
             for tool_use in tool_use_blocks:
@@ -553,12 +711,14 @@ class GameAgent:
             
             # Add tool results to chat history if there are any
             if tool_results:
-                self.chat_history.append({
+                tool_results_message = {
                     "role": "user",
                     "content": tool_results
-                })
+                }
+                self.chat_history.append(tool_results_message)
+                self.game_state.add_to_complete_history(tool_results_message)
             
-            # Limit chat history to max_messages
+            # Limit chat history to max_messages (but keep complete history intact)
             if len(self.chat_history) > Config.MAX_HISTORY_MESSAGES:
                 self.chat_history = self.chat_history[-Config.MAX_HISTORY_MESSAGES:]
             
@@ -582,10 +742,12 @@ class GameAgent:
                         })
                     
                     # Add tool results to chat history to maintain API conversation requirements
-                    self.chat_history.append({
+                    tool_results_message = {
                         "role": "user",
                         "content": tool_results
-                    })
+                    }
+                    self.chat_history.append(tool_results_message)
+                    self.game_state.add_to_complete_history(tool_results_message)
         
         # Log the end of the turn
         logging.info(f"======= END TURN: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} =======\n")
