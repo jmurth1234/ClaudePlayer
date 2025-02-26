@@ -28,7 +28,7 @@ One tick is equal to {TICK_FRAMES} frames.
 Always use a number before a button symbol to specify the duration of the action.
 Spaces separate individual actions. Always use spaces between actions.
 Never repeat a button symbol within the same action.
-Waiting should not be used to stall the game, and should only be used to wait for e.g. animations to complete. Priority should be given to pressing buttons.
+Waiting should not be used to stall the game, and should only be used to wait for e.g. animations or screen transitions to complete. Priority should be given to pressing buttons.
 </rules>
 
 <symbols>

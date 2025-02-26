@@ -9,6 +9,7 @@ import logging
 import json
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Union
+import sys
 
 from utils import press_and_release_buttons, button_rules, take_screenshot
 
@@ -16,18 +17,73 @@ from utils import press_and_release_buttons, button_rules, take_screenshot
 # Configuration
 # -----------------------------------------------------------------------------
 
-class Config:
-    """Configuration settings for the game agent."""
-    ROM_PATH = 'gold.gbc'
-    STATE_PATH = 'gold.gbc.state'
-    LOG_FILE = 'game_agent.log'
-    EMULATION_SPEED = 1
-    ENABLE_WRAPPER = False
-    MAX_HISTORY_MESSAGES = 30
-    MODEL = "claude-3-7-sonnet-20250219"
-    MAX_TOKENS = 20000
-    THINKING_BUDGET = 16000
-    SUMMARY_INTERVAL = 30
+import json
+import os.path
+
+def load_config(config_file='config.json'):
+    """
+    Load configuration from a JSON file with fallback to default values.
+    If the configuration file doesn't exist, it will be created with default values.
+    
+    Args:
+        config_file: Path to the configuration file (default: 'config.json')
+        
+    Returns:
+        Configuration object with loaded values or defaults
+    """
+    # Default configuration values
+    default_config = {
+        "ROM_PATH": 'red.gb',
+        "STATE_PATH": None,
+        "LOG_FILE": 'game_agent.log',
+        "EMULATION_SPEED": 1,
+        "ENABLE_WRAPPER": False,
+        "MAX_HISTORY_MESSAGES": 30,
+        "MODEL": "claude-3-7-sonnet-20250219",
+        "MAX_TOKENS": 20000,
+        "THINKING_BUDGET": 16000,
+        "SUMMARY_INTERVAL": 30
+    }
+    
+    # Create configuration object
+    class Config:
+        """Configuration settings for the game agent."""
+        pass
+    
+    config = Config()
+    
+    # Load configuration from file if it exists
+    if os.path.exists(config_file):
+        try:
+            with open(config_file, 'r') as f:
+                file_config = json.load(f)
+            
+            # Log that we're loading from file
+            print(f"Loading configuration from {config_file}")
+            
+            # Update default configuration with values from file
+            default_config.update(file_config)
+        except Exception as e:
+            print(f"Error loading configuration file: {str(e)}")
+            print("Using default configuration values")
+    else:
+        print(f"Configuration file '{config_file}' not found, creating with default values")
+        try:
+            # Write default configuration to file
+            with open(config_file, 'w') as f:
+                json.dump(default_config, f, indent=2)
+            print(f"Created default configuration file: {config_file}")
+        except Exception as e:
+            print(f"Error creating configuration file: {str(e)}")
+    
+    # Set configuration attributes
+    for key, value in default_config.items():
+        setattr(config, key, value)
+    
+    return config
+
+# Create Config instance
+Config = load_config()
 
 # -----------------------------------------------------------------------------
 # Logging Setup
@@ -595,13 +651,26 @@ class GameAgent:
         """Initialize the game agent."""
         setup_logging()
         
+        # Check if ROM file exists
+        if not os.path.exists(Config.ROM_PATH):
+            error_msg = f"ERROR: ROM file not found: {Config.ROM_PATH}"
+            logging.critical(error_msg)
+            logging.critical("Please check your configuration and ensure the ROM file exists.")
+            logging.critical(f"If you're using a custom configuration file, verify the 'ROM_PATH' setting.")
+            sys.exit(1)
+        
         # Initialize game components
         self.pyboy = PyBoy(Config.ROM_PATH, game_wrapper=True)
         self.pyboy.set_emulation_speed(target_speed=Config.EMULATION_SPEED)
         
         # Load saved state if available
-        with open(Config.STATE_PATH, "rb") as file:
-            self.pyboy.load_state(file)
+        if Config.STATE_PATH:
+            if not os.path.exists(Config.STATE_PATH):
+                logging.warning(f"Saved state file not found: {Config.STATE_PATH}")
+                print(f"Warning: Saved state file not found: {Config.STATE_PATH}")
+            else:
+                with open(Config.STATE_PATH, "rb") as file:
+                    self.pyboy.load_state(file)
         
         # Initialize game wrapper if enabled
         self.wrapper = self.pyboy.game_wrapper()
