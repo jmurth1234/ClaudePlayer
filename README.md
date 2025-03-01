@@ -10,7 +10,7 @@ An AI-powered game playing agent using Claude and PyBoy
 
 ## Overview
 
-Claude Player is an AI agent that allows Claude AI to play Game Boy games through the PyBoy emulator. It creates an intelligent gaming agent that can observe game frames, make decisions, track game state, and control the emulator through a button input system.
+Claude Player is an AI agent that lets Claude play Game Boy games through the PyBoy emulator. The agent observes game frames, makes strategic decisions, and controls the emulator through button inputs.
 
 I have been working on this project for a while, and have been meaning to clean it up and release it, and with the release of Claude 3.7 (especially given their semi official https://www.twitch.tv/claudeplayspokemon stream of a similar project), I thought it was a good time to do so.
 
@@ -18,33 +18,29 @@ I've taken some imspiration from their official implementation by adding additio
 
 ## Features
 
-- **AI-Powered Gameplay**: Uses Claude 3.7 Sonnet to analyze game frames and determine strategic actions
-- **PyBoy Integration**: Controls a Game Boy emulator to play actual game ROMs
-- **Memory System**: Implements short-term and long-term memory to maintain context throughout gameplay
-- **Automatic Summarization**: Periodically generates game progress summaries to maintain context
-- **Tool-Based Control**: Allows the AI to use structured tools to interact with the game and manage its state
-- **Screenshot Capture**: Automatically captures and saves game frames for analysis and debugging
-
-## Limitations
-
-- The spacial awareness is not yet very good. It will try to move around the screen in a way that is not always logical.
-- It will sometimes get stuck in loops, such as trying to go downstairs at the bottom edge of the room.
+- **AI-Powered Gameplay**: Uses Claude 3.7 to analyze game frames and determine optimal actions
+- **Dual Emulation Modes**:
+  - **Turn-based**: Emulator only advances when AI sends inputs (default)
+  - **Continuous**: Real-time gameplay with periodic AI analysis
+- **Memory System**: Short-term and long-term memory to maintain game context
+- **Automatic Summarization**: Periodically generates game progress summaries
+- **Tool-Based Control**: Structured tools for game interaction and state management
+- **Screenshot Capture**: Automatically saves frames for analysis and debugging
 
 ## Requirements
 
-- Python 3.10.12
+- Python 3.10+
 - PyBoy emulator
-- Pillow (for image processing)
-- Anthropic API key (for Claude access)
-- Game Boy ROM files (e.g., Pokemon Gold as shown in the code)
-- Saved state file (for starting from a specific point)
+- Anthropic API key
+- Game Boy ROM files
+- Optional: Saved state files
 
 ## Installation
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/game-agent.git
-   cd game-agent
+   git clone https://github.com/jmurth1234/claude-player.git
+   cd claude-player
    ```
 
 2. Install dependencies using Pipenv (recommended):
@@ -52,56 +48,48 @@ I've taken some imspiration from their official implementation by adding additio
    pipenv install
    ```
    
-   The project uses Python 3.10.12 and includes the following dependencies:
-   - pyboy
-   - pillow
-   - python-dotenv
-   - anthropic
-
-   Alternatively, you can install packages manually:
-   ```
-   pip install anthropic pyboy python-dotenv pillow
-   ```
-
 3. Create a `.env` file with your Anthropic API key:
    ```
    ANTHROPIC_API_KEY=your_api_key_here
    ```
 
-4. Place your Game Boy ROM file in the project directory.
+4. Place your Game Boy ROM file in the project directory
 
 ## Configuration
 
-The configuration is loaded from `config.json` (created automatically on first run if not found). The settings are structured to avoid duplication between different modes:
+Configuration is loaded from `config.json` (created automatically on first run if not found). The settings are structured to avoid duplication between different modes:
 
-```python
+```json
 {
-    "ROM_PATH": "red.gb",            # Path to the Game Boy ROM file
-    "STATE_PATH": null,              # Path to a saved state (optional)
-    "LOG_FILE": "game_agent.log",    # Path to the log file
-    "EMULATION_SPEED": 1,            # Emulation speed multiplier
-    "ENABLE_WRAPPER": false,         # Enable PyBoy game wrapper
-    "MAX_HISTORY_MESSAGES": 30,      # Max messages kept in context
-
-    # Default settings for all modes
-    "MODEL_DEFAULTS": {
-        "MODEL": "claude-3-7-sonnet-20250219",  # Claude model to use
-        "THINKING": true,                       # Enable Claude thinking
-        "EFFICIENT_TOOLS": true,                # Use efficient tools mode
-        "MAX_TOKENS": 20000,                    # Maximum tokens for Claude response
-        "THINKING_BUDGET": 16000                # Tokens allocated for Claude thinking
-    },
-
-    # Action mode settings (inherits from MODEL_DEFAULTS)
-    "ACTION": {
-        # Override any MODEL_DEFAULTS settings here
-    },
-
-    # Summary mode settings (inherits from MODEL_DEFAULTS)
-    "SUMMARY": {
-        "INITIAL_SUMMARY": true,     # Generate a summary on first turn
-        "SUMMARY_INTERVAL": 30       # Generate summary every N turns
-    }
+  "ROM_PATH": "gold.gbc",            // Path to the Game Boy ROM file
+  "STATE_PATH": "gold.gbc.state",    // Optional path to a saved state (null for none)
+  "LOG_FILE": "game_agent.log",      // Path to the log file
+  "EMULATION_MODE": "turn_based",    // "turn_based" or "continuous"
+  "EMULATION_SPEED": 1,              // Emulation speed multiplier
+  "CONTINUOUS_ANALYSIS_INTERVAL": 1.0, // Analysis frequency in seconds (continuous mode)
+  "ENABLE_WRAPPER": false,           // Whether to enable the PyBoy game wrapper
+  "MAX_HISTORY_MESSAGES": 30,        // Max messages kept in context window
+  
+  // Default settings for all model modes - inherited by ACTION and SUMMARY if not overridden
+  "MODEL_DEFAULTS": {
+    "MODEL": "claude-3-7-sonnet-20250219", // Claude model version
+    "THINKING": true,                // Whether to enable Claude's thinking mode
+    "EFFICIENT_TOOLS": true,         // Whether to use token-efficient-tools beta
+    "MAX_TOKENS": 20000,             // Maximum tokens for Claude's response
+    "THINKING_BUDGET": 16000         // Maximum tokens for Claude's thinking
+  },
+  
+  // Action mode settings (inherits from MODEL_DEFAULTS)
+  "ACTION": {
+    // Override MODEL_DEFAULTS settings here if needed
+  },
+  
+  // Summary mode settings (inherits from MODEL_DEFAULTS)
+  "SUMMARY": {
+    "INITIAL_SUMMARY": false,        // Generate a summary on first turn
+    "SUMMARY_INTERVAL": 30           // Generate summary every N turns
+    // Other MODEL_DEFAULTS can be overridden here
+  }
 }
 ```
 
@@ -121,187 +109,40 @@ You can customize these settings by:
 
 2. Run the agent:
    ```
-   python game_agent.py
+   python player.py
    ```
 
-The agent will initialize the emulator, load the ROM (and saved state if available), and begin playing the game automatically.
+## Game Controls
 
-## Game Control System
-
-The agent uses a structured input notation to control the game:
+The agent uses a structured notation for game inputs:
 
 - **Single Press**: `A` (press A once)
-- **Hold**: `A2` (press and hold A for 2 ticks)
-- **Simultaneous Press**: `AB` (press A and B simultaneously)
+- **Hold**: `A2` (hold A for 2 ticks)
+- **Simultaneous**: `AB` (press A and B together)
 - **Wait**: `W` or `W2` (wait for 1 or 2 ticks)
-- **Wait then Press**: `W R` (wait for 1 tick, then press R)
-- **Repeated Actions**: `R2` (move right for 2 ticks)
+- **Sequence**: `R2 A U3` (right for 2 ticks, A once, up for 3 ticks)
 
-Available button symbols:
-- `U`: Up
-- `D`: Down
-- `L`: Left
-- `R`: Right
-- `A`: A button
-- `B`: B button
-- `S`: Start button
-- `X`: Select button
-- `W`: Wait (no button)
-
-Examples:
-- `R2 A U3 UB` (move right for 2 ticks, press A once, move up for 3 ticks, press Up+B simultaneously)
+Available buttons: `U` (Up), `D` (Down), `L` (Left), `R` (Right), `A`, `B`, `S` (Start), `X` (Select), `W` (Wait)
 
 ## Tool System
 
-The AI agent has access to several tools to interact with the game and manage its state:
+The AI uses several tools to interact with the game:
 
-1. **send_inputs**: Send a sequence of button inputs to the game
-2. **set_game**: Set the identified game name
-3. **set_current_goal**: Set the current goal in the game
-4. **add_to_memory**: Add information to the agent's memory
-5. **remove_from_memory**: Remove an item from memory
-6. **update_memory_item**: Update an existing memory item
+- `send_inputs`: Send button sequences
+- `set_game`: Identify the current game
+- `set_current_goal`: Set the current gameplay objective
+- `add_to_memory`: Store important information
+- `remove_from_memory`: Remove outdated information
+- `update_memory_item`: Update existing memory items
 
-## Memory System
+## Debugging
 
-The agent maintains two types of memory:
-
-1. **Short-Term Memory**: Recent conversation context (limited to 30 messages)
-2. **Long-Term Memory**: Persistent information stored through the memory tools
-
-Memory items can be categorized (e.g., 'items', 'NPCs', 'locations', 'quests') and are formatted in the prompt for the AI to reference.
-
-## Summarization
-
-Every 30 turns, the agent generates a comprehensive summary of the gameplay, including:
-
-1. **Gameplay Summary**: Key events, achievements, and progress
-2. **Critical Review**: Analysis of recent gameplay and strategic patterns
-3. **Next Steps**: Recommended goals and actions
-
-This helps maintain context over long gaming sessions.
-
-## Debugging and Monitoring
-
-### Screenshots
-All game frames are captured and saved to `./frames/{timestamp}/` for debugging and analysis. Each screenshot is timestamped and saved as a PNG file.
-
-### Logging
-Detailed logs are saved to `game_agent.log` and include:
-- Turn information and timestamps
-- Game state (identified game, current goal, memory items)
-- Claude's thinking process and responses
-- Tool usage with inputs and outputs
-- Error messages and warnings
-
-The `debug` function in `utils.py` can also generate a `chat_history.json` and `chat_history.md` file for easier review of the conversation between the agent and Claude.
-
-## Customization
-
-To adapt the agent for different games:
-
-1. Change the `ROM_PATH` in the Config class
-2. Adjust `EMULATION_SPEED` as needed (higher values increase speed)
-3. Modify the system prompt or tool descriptions if needed for specific games
-
-## How It Works
-
-### Core Workflow
-1. The agent initializes the PyBoy emulator and loads the ROM and saved state
-2. On each turn, it:
-   - Captures the current screen
-   - Sends the screenshot to Claude with relevant context
-   - Processes Claude's thinking and response
-   - Executes any tool calls (game inputs, memory updates, etc.)
-   - Saves detailed logs and screenshots
-3. Periodically generates summaries to maintain long-term context
-4. Uses both short-term (message history) and long-term (memory items) memory systems
-
-### Key Components
-- **GameAgent**: Main class that orchestrates the gameplay session
-- **GameState**: Manages and tracks the state of the game being played
-- **ClaudeInterface**: Handles communication with the Claude API
-- **ToolRegistry**: Manages the tools available to Claude 
-- **SummaryGenerator**: Creates periodic summaries of gameplay progress
-- **MessageUtils**: Utilities for processing and logging Claude's responses
-
-## Examples
-
-### Game Identification and Goal Setting
-
-Here's an example of the agent identifying a game and setting goals:
-
-```
-2025-02-26 08:33:22,603 [INFO] ======= NEW TURN: 2025-02-26 08:33:22 =======
-2025-02-26 08:33:22,603 [INFO] GAME: Pokémon Gold/Silver/Crystal
-2025-02-26 08:33:22,603 [INFO] GOAL: Leave the house and meet Professor Elm to get our first Pokémon
-2025-02-26 08:33:22,603 [INFO] TURN: 58
-2025-02-26 08:33:22,603 [INFO] SUMMARY: [snipped]
-2025-02-26 08:33:29,337 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages?beta=true "HTTP/1.1 200 OK"
-2025-02-26 08:33:29,338 [INFO] ===== DEBUG: MESSAGE STRUCTURE =====
-2025-02-26 08:33:29,339 [INFO] Total blocks: 3
-2025-02-26 08:33:29,339 [INFO] Block 0: type=thinking, content=I see that I'm still not finding the exit. Let me try a different approach. In Pokémon Gold/Silver/C...
-2025-02-26 08:33:29,339 [INFO] Block 1: type=text, content=Let me move one tile more to the left to stand directly on the white doormat, and then press down:
-2025-02-26 08:33:29,339 [INFO] Block 2: type=tool_use, tool=send_inputs, input={
-  "inputs": "L1 D1"
-}
-2025-02-26 08:33:29,339 [INFO] ===== END DEBUG: MESSAGE STRUCTURE =====
-2025-02-26 08:33:29,339 [INFO] CLAUDE'S THINKING:
-2025-02-26 08:33:29,339 [INFO]   I see that I'm still not finding the exit. Let me try a different approach. In Pokémon Gold/Silver/Crystal, the exit from the house is typically a carpet or mat at the bottom of the room, and you need to press down when standing on it to leave.
-
-Let me try:
-1. First, let me try standing directly on the white object to the left (which appears to be a carpet or doormat) and pressing down
-2. If that doesn't work, I'll try the center area between furniture
-3. I should also use the Start button to check the menu and see if there's any useful information there
-
-Let me try pressing down while standing on the white object:
-2025-02-26 08:33:29,339 [INFO] CLAUDE'S RESPONSE:
-2025-02-26 08:33:29,339 [INFO]   Let me move one tile more to the left to stand directly on the white doormat, and then press down:
-2025-02-26 08:33:29,339 [INFO] TOOLS USED:
-2025-02-26 08:33:29,339 [INFO]   Tool: send_inputs
-2025-02-26 08:33:29,339 [INFO]   Input: {
-  "inputs": "L1 D1"
-}
-2025-02-26 08:33:29,339 [INFO] EXECUTING INPUTS: L1 D1
-Executing sequence: L1 D1
-Actions: [('L', 1), ('D', 1)]
-Pressing L for 1 ticks
-Releasing L
-Pressing D for 1 ticks
-Releasing D
-2025-02-26 08:33:30,340 [INFO] ======= END TURN: 2025-02-26 08:33:30 =======
-```
-
-### Example Summarization
-
-```
-# Pokémon Gold/Silver/Crystal Gameplay Summary
-
-## GAMEPLAY SUMMARY
-- We're at the very beginning of Pokémon Gold/Silver/Crystal, with our character starting in their home in New Bark Town.
-- Our character appears to be the male protagonist based on the sprite's appearance with characteristic red hair.
-- We've been exploring the small house, which contains typical home furniture including a table/cabinet on the right side and what appears to be a TV or dresser on the left.
-- No NPC interactions have occurred yet, as we haven't spoken to any characters.
-- We haven't yet found the exit to leave the house, which is our first objective.
-
-## CRITICAL REVIEW
-- The exploration has been somewhat inefficient, with repeated movements across similar areas of the house.
-- We've been missing the exit mat that should be located somewhere along the bottom wall of the house.
-- The search pattern has been unsystematic, moving back and forth between areas we've already checked rather than methodically checking new areas.
-- We've been looking in the correct general area (the bottom of the house) but haven't found the specific exit point yet.
-- There hasn't been any attempt to interact with objects in the house or check the menu for any initial items.
-
-## NEXT STEPS
-1. **Find the exit mat:** Continue searching along the bottom wall of the house, likely in the center-bottom area. Try moving to each position along the bottom wall and pressing down to check for the exit.
-2. **Use the A button:** When near suspicious areas (door mats, door-shaped objects), try pressing A to interact.
-3. **Check the menu:** Press Start to check if we have any items or to review any initial game information.
-4. **Once outside:** After leaving the house, look for Professor Elm's laboratory, which should be nearby in New Bark Town.
-5. **Talk to NPCs:** When encountering other characters, talk to them for potential hints about where to go.
-```
+- Game frames are saved to `./frames/{timestamp}/`
+- Detailed logs are written to `game_agent.log`
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions welcome! Please feel free to submit a Pull Request.
 
 ## License
 
