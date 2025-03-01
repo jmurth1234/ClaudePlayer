@@ -8,8 +8,9 @@ import os
 import logging
 import json
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional, Union, TypedDict, cast
 import sys
+import argparse
 
 from utils import press_and_release_buttons, button_rules, take_screenshot
 
@@ -20,7 +21,54 @@ from utils import press_and_release_buttons, button_rules, take_screenshot
 import json
 import os.path
 
-def load_config(config_file='config.json'):
+# Define typed configuration structures
+class ModelConfig(TypedDict, total=False):
+    MODEL: str
+    THINKING: bool
+    EFFICIENT_TOOLS: bool
+    MAX_TOKENS: int
+    THINKING_BUDGET: int
+
+class SummaryConfig(ModelConfig):
+    INITIAL_SUMMARY: bool
+    SUMMARY_INTERVAL: int
+
+class ActionConfig(ModelConfig):
+    pass
+
+class ConfigClass:
+    """Configuration settings for the game agent."""
+    ROM_PATH: str
+    STATE_PATH: Optional[str]
+    LOG_FILE: str
+    EMULATION_SPEED: int
+    ENABLE_WRAPPER: bool
+    MAX_HISTORY_MESSAGES: int
+    MODEL_DEFAULTS: ModelConfig
+    ACTION: ActionConfig
+    SUMMARY: SummaryConfig
+    
+    @staticmethod
+    def get_mode_config(mode_name: str, overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Get a mode configuration with optional overrides.
+        
+        Args:
+            mode_name: The name of the mode (e.g., "ACTION", "SUMMARY")
+            overrides: Optional dictionary of settings to override
+            
+        Returns:
+            A dictionary with the complete configuration for the mode
+        """
+        config = getattr(Config, mode_name).copy()
+        if overrides:
+            config.update(overrides)
+        return config
+
+# Create type for Config - will be initialized in main()
+Config: Optional[ConfigClass] = None
+
+def load_config(config_file='config.json') -> ConfigClass:
     """
     Load configuration from a JSON file with fallback to default values.
     If the configuration file doesn't exist, it will be created with default values.
@@ -39,18 +87,30 @@ def load_config(config_file='config.json'):
         "EMULATION_SPEED": 1,
         "ENABLE_WRAPPER": False,
         "MAX_HISTORY_MESSAGES": 30,
-        "MODEL": "claude-3-7-sonnet-20250219",
-        "MAX_TOKENS": 20000,
-        "THINKING_BUDGET": 16000,
-        "SUMMARY_INTERVAL": 30
+
+        # Common model settings - defaults that can be overridden
+        "MODEL_DEFAULTS": {
+            "MODEL": "claude-3-7-sonnet-20250219",
+            "THINKING": True,
+            "EFFICIENT_TOOLS": True,
+            "MAX_TOKENS": 20000,
+            "THINKING_BUDGET": 16000,
+        },
+
+        # Mode-specific settings (will inherit from MODEL_DEFAULTS if not specified)
+        "ACTION": {
+            # Any settings that differ from MODEL_DEFAULTS can be specified here
+        },
+
+        "SUMMARY": {
+            # Any settings that differ from MODEL_DEFAULTS can be specified here
+            "INITIAL_SUMMARY": True,
+            "SUMMARY_INTERVAL": 30
+        }
     }
     
     # Create configuration object
-    class Config:
-        """Configuration settings for the game agent."""
-        pass
-    
-    config = Config()
+    config = ConfigClass()
     
     # Load configuration from file if it exists
     if os.path.exists(config_file):
@@ -80,22 +140,28 @@ def load_config(config_file='config.json'):
     for key, value in default_config.items():
         setattr(config, key, value)
     
+    # Apply defaults to modes that inherit from MODEL_DEFAULTS
+    for mode in ["ACTION", "SUMMARY"]:
+        mode_config = default_config[mode].copy() if mode in default_config else {}
+        # Merge with defaults (mode settings override defaults)
+        for k, v in default_config["MODEL_DEFAULTS"].items():
+            if k not in mode_config:
+                mode_config[k] = v
+        setattr(config, mode, mode_config)
+    
     return config
-
-# Create Config instance
-Config = load_config()
 
 # -----------------------------------------------------------------------------
 # Logging Setup
 # -----------------------------------------------------------------------------
 
-def setup_logging():
+def setup_logging(config):
     """Configure logging for the application."""
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s [%(levelname)s] %(message)s',
         handlers=[
-            logging.FileHandler(Config.LOG_FILE),
+            logging.FileHandler(config.LOG_FILE),
             logging.StreamHandler()
         ]
     )
@@ -446,27 +512,51 @@ class ClaudeInterface:
     
     def generate_system_prompt(self) -> str:
         """Generate the system prompt for Claude."""
-        return f"""You are an AI designed to play video games. You will be given frames from a video game and must use the provided tools to interact with the game. You are also given tools to give yourself a long term memory, as you can only keep a few messages in your short term memory. Your ultimate objective is to defeat the game.
+        return f"""You are an AI agent designed to play video games. You will be given frames from a video game and must use the provided tools to interact with the game. You are also given tools to give yourself a long term memory, as you can only keep a few messages in your short term memory. Your ultimate objective is to defeat the game.
 
 <notation>
 {button_rules}
-</notation>"""
+</notation>
+
+Always use the tools provided to you to interact with the game.
+"""
     
-    def send_request(self, system_prompt: str, chat_history: List[Dict[str, Any]], tools: List[Dict[str, Any]]) -> Any:
-        """Send a request to the Claude API."""
+    def send_request(
+            self,
+            mode_config: Dict[str, Any],
+            system_prompt: str, 
+            chat_history: List[Dict[str, Any]], 
+            tools: List[Dict[str, Any]]
+        ) -> Any:
+        """Send a request to the Claude API using mode configuration."""
         try:
-            return self.client.beta.messages.create(
-                model=Config.MODEL,
-                max_tokens=Config.MAX_TOKENS,
-                thinking={
+            # Initialize an empty list for collecting beta features
+            betas = []
+            
+            # Add token-efficient-tools beta if enabled
+            if mode_config.get("EFFICIENT_TOOLS", False):
+                betas.append("token-efficient-tools-2025-02-19")
+                        
+            # Create API request params (without betas by default)
+            request_params = {
+                "model": mode_config["MODEL"],
+                "max_tokens": mode_config["MAX_TOKENS"],
+                "thinking": {
                     "type": "enabled",
-                    "budget_tokens": Config.THINKING_BUDGET
+                    "budget_tokens": mode_config["THINKING_BUDGET"]
+                } if mode_config.get("THINKING", False) else {
+                    "type": "disabled"
                 },
-                tools=tools,
-                system=system_prompt,
-                messages=chat_history,
-                betas=["token-efficient-tools-2025-02-19"]
-            )
+                "tools": tools,
+                "system": system_prompt,
+                "messages": chat_history,
+            }
+            
+            # Only add betas parameter if we have at least one beta feature enabled
+            if betas:
+                request_params["betas"] = betas
+            
+            return self.client.beta.messages.create(**request_params)
         except Exception as e:
             logging.error(f"ERROR in Claude API request: {str(e)}")
             raise
@@ -479,11 +569,12 @@ class ClaudeInterface:
 class SummaryGenerator:
     """Generates game summaries to maintain context over long sessions."""
     
-    def __init__(self, client: ClaudeInterface, game_state: GameState, tool_registry: ToolRegistry):
+    def __init__(self, client: ClaudeInterface, game_state: GameState, tool_registry: ToolRegistry, config: ConfigClass):
         """Initialize the summary generator."""
         self.client = client
         self.game_state = game_state
         self.tool_registry = tool_registry
+        self.config = config
 
         self.previous_summary = ""
         self.summary_count = 0
@@ -509,11 +600,29 @@ Your summary should include three clearly labeled sections:
 2. CRITICAL REVIEW: Analysis of the last 30 steps of gameplay - what worked well, what could be improved, and any strategic patterns
 3. NEXT STEPS: Clear recommendations for immediate next goals and actions
 
+The button rules are as follows:
+{button_rules}
+
 Write in a concise but comprehensive manner. Focus on information that would be most useful for continued gameplay.
 
 You are given tools as a reference to help you create your summary. DO NOT CALL ANY TOOLS.
 """
         
+        initial_summary_system_prompt = """You are an AI planning a gameplay session. Your task is to create a comprehensive summary of what will happen next to maintain context across gameplay sessions.
+
+Your summary should include three clearly labeled sections:
+1. GAMEPLAY SUMMARY: Identify the game, what the objective is, and what the initial state of the game is.
+2. NEXT STEPS: Clear recommendations for immediate next goals and actions
+3. GAMEPLAY TIPS: Any game specific knowledge that would be helpful for the player to know e.g. control scheme, game mechanics, etc.
+
+The button rules are as follows:
+{button_rules}
+
+Write in a concise but comprehensive manner. Focus on information that would be most useful for continued gameplay.
+
+You are given tools as a reference to help you create your summary. DO NOT CALL ANY TOOLS.
+"""
+
         # Create a structured message that includes the previous summary and chat history
         messages = []
 
@@ -545,8 +654,10 @@ You are given tools as a reference to help you create your summary. DO NOT CALL 
             "text": f"Here is the current game state:\n\n{self.game_state.get_current_state_summary()}"
         })
 
+        system_prompt = initial_summary_system_prompt if self.game_state.turn_count == 1 else system_prompt
+
         try:
-            response = self.client.send_request(system_prompt, messages, self.tool_registry.get_tools())
+            response = self.client.send_request(self.config.SUMMARY, system_prompt, messages, self.tool_registry.get_tools())
 
             MessageUtils.debug_message_structure(response)
 
@@ -647,34 +758,35 @@ class MessageUtils:
 class GameAgent:
     """Main game agent class that orchestrates the AI gameplay."""
     
-    def __init__(self):
-        """Initialize the game agent."""
-        setup_logging()
+    def __init__(self, config: ConfigClass):
+        """Initialize the game agent with a configuration object."""
+        self.config = config
+        setup_logging(self.config)
         
         # Check if ROM file exists
-        if not os.path.exists(Config.ROM_PATH):
-            error_msg = f"ERROR: ROM file not found: {Config.ROM_PATH}"
+        if not os.path.exists(self.config.ROM_PATH):
+            error_msg = f"ERROR: ROM file not found: {self.config.ROM_PATH}"
             logging.critical(error_msg)
             logging.critical("Please check your configuration and ensure the ROM file exists.")
             logging.critical(f"If you're using a custom configuration file, verify the 'ROM_PATH' setting.")
             sys.exit(1)
         
         # Initialize game components
-        self.pyboy = PyBoy(Config.ROM_PATH, game_wrapper=True)
-        self.pyboy.set_emulation_speed(target_speed=Config.EMULATION_SPEED)
+        self.pyboy = PyBoy(self.config.ROM_PATH, game_wrapper=True)
+        self.pyboy.set_emulation_speed(target_speed=self.config.EMULATION_SPEED)
         
         # Load saved state if available
-        if Config.STATE_PATH:
-            if not os.path.exists(Config.STATE_PATH):
-                logging.warning(f"Saved state file not found: {Config.STATE_PATH}")
-                print(f"Warning: Saved state file not found: {Config.STATE_PATH}")
+        if self.config.STATE_PATH:
+            if not os.path.exists(self.config.STATE_PATH):
+                logging.warning(f"Saved state file not found: {self.config.STATE_PATH}")
+                print(f"Warning: Saved state file not found: {self.config.STATE_PATH}")
             else:
-                with open(Config.STATE_PATH, "rb") as file:
+                with open(self.config.STATE_PATH, "rb") as file:
                     self.pyboy.load_state(file)
         
         # Initialize game wrapper if enabled
         self.wrapper = self.pyboy.game_wrapper()
-        if self.wrapper is not None and Config.ENABLE_WRAPPER:
+        if self.wrapper is not None and self.config.ENABLE_WRAPPER:
             self.wrapper.start_game()
         
         # Initialize game state
@@ -687,7 +799,7 @@ class GameAgent:
         self.claude = ClaudeInterface()
 
         # Initialize summary generator
-        self.summary_generator = SummaryGenerator(self.claude, self.game_state, self.tool_registry)
+        self.summary_generator = SummaryGenerator(self.claude, self.game_state, self.tool_registry, self.config)
         
         # Initialize chat history
         self.chat_history = []
@@ -702,20 +814,14 @@ class GameAgent:
         logging.info(f"======= NEW TURN: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} =======")
         self.game_state.log_state()
 
-        # Check if we need to generate a summary
-        if self.game_state.turn_count % Config.SUMMARY_INTERVAL == 0 and self.game_state.turn_count > 0:
-            logging.info(f"Generating summary at turn {self.game_state.turn_count}")
-            # Use the complete message history for summary generation
-            summary = self.summary_generator.generate_summary(self.game_state.complete_message_history)
-            self.game_state.update_summary(summary)
-        
         # Capture current screenshot
         screenshot = take_screenshot(self.pyboy, True)
         
         # Prepare user content with screenshot and optional wrapper text
         user_content = [screenshot]
-        if self.wrapper is not None and Config.ENABLE_WRAPPER:
+        if self.wrapper is not None and self.config.ENABLE_WRAPPER:
             user_content.append({"type": "text", "text": f"A textual representation of the current screen is:\n{self.wrapper}"})
+
         
         # Add user message to chat history if it's the first turn
         if len(self.chat_history) == 0:
@@ -727,6 +833,13 @@ class GameAgent:
             user_message = {"role": "user", "content": [{"type": "text", "text": current_memory}]}
             self.chat_history.append(user_message)
             self.game_state.add_to_complete_history(user_message)
+
+        # Check if we need to generate a summary if the game has just become playable or if it's time to generate a summary
+        if (self.config.SUMMARY["INITIAL_SUMMARY"] and self.game_state.turn_count == 1) or (self.game_state.turn_count % self.config.SUMMARY["SUMMARY_INTERVAL"] == 0 and self.game_state.turn_count > 0):
+            logging.info(f"Generating summary at turn {self.game_state.turn_count}")
+            # Use the complete message history for summary generation
+            summary = self.summary_generator.generate_summary(self.game_state.complete_message_history)
+            self.game_state.update_summary(summary)
         
         try:
             # Generate system prompt
@@ -736,7 +849,12 @@ class GameAgent:
             tools = self.tool_registry.get_tools()
             
             # Send request to Claude
-            message = self.claude.send_request(system_prompt, self.chat_history, tools)
+            message = self.claude.send_request(
+                self.config.ACTION, 
+                system_prompt, 
+                self.chat_history, 
+                tools
+            )
             
             # Debug message structure
             MessageUtils.debug_message_structure(message)
@@ -788,8 +906,8 @@ class GameAgent:
                 self.game_state.add_to_complete_history(tool_results_message)
             
             # Limit chat history to max_messages (but keep complete history intact)
-            if len(self.chat_history) > Config.MAX_HISTORY_MESSAGES:
-                self.chat_history = self.chat_history[-Config.MAX_HISTORY_MESSAGES:]
+            if len(self.chat_history) > self.config.MAX_HISTORY_MESSAGES:
+                self.chat_history = self.chat_history[-self.config.MAX_HISTORY_MESSAGES:]
             
         except Exception as e:
             error_msg = f"CRITICAL ERROR: {str(e)}"
@@ -835,5 +953,14 @@ class GameAgent:
 # -----------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    agent = GameAgent()
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Game Agent - An AI-powered game playing agent using Claude and PyBoy")
+    parser.add_argument("--config", type=str, default="config.json", help="Path to the configuration file")
+    args = parser.parse_args()
+    
+    # Load configuration
+    Config = load_config(args.config)
+    
+    # Create and run the agent
+    agent = GameAgent(Config)
     agent.run()

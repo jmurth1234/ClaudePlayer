@@ -72,24 +72,45 @@ I've taken some imspiration from their official implementation by adding additio
 
 ## Configuration
 
-The main configuration settings are located in the `Config` class:
+The configuration is loaded from `config.json` (created automatically on first run if not found). The settings are structured to avoid duplication between different modes:
 
 ```python
-class Config:
-    """Configuration settings for the game agent."""
-    ROM_PATH = 'gold.gbc'            # Path to the Game Boy ROM file
-    STATE_PATH = 'gold.gbc.state'    # Path to a saved state (optional)
-    LOG_FILE = 'game_agent.log'      # Path to the log file
-    EMULATION_SPEED = 1              # Emulation speed multiplier
-    ENABLE_WRAPPER = False           # Enable PyBoy game wrapper
-    MAX_HISTORY_MESSAGES = 30        # Max messages kept in context
-    MODEL = "claude-3-7-sonnet-20250219"  # Claude model to use
-    MAX_TOKENS = 20000               # Maximum tokens for Claude response
-    THINKING_BUDGET = 16000          # Tokens allocated for Claude thinking
-    SUMMARY_INTERVAL = 30            # Generate summary every N turns
+{
+    "ROM_PATH": "red.gb",            # Path to the Game Boy ROM file
+    "STATE_PATH": null,              # Path to a saved state (optional)
+    "LOG_FILE": "game_agent.log",    # Path to the log file
+    "EMULATION_SPEED": 1,            # Emulation speed multiplier
+    "ENABLE_WRAPPER": false,         # Enable PyBoy game wrapper
+    "MAX_HISTORY_MESSAGES": 30,      # Max messages kept in context
+
+    # Default settings for all modes
+    "MODEL_DEFAULTS": {
+        "MODEL": "claude-3-7-sonnet-20250219",  # Claude model to use
+        "THINKING": true,                       # Enable Claude thinking
+        "EFFICIENT_TOOLS": true,                # Use efficient tools mode
+        "MAX_TOKENS": 20000,                    # Maximum tokens for Claude response
+        "THINKING_BUDGET": 16000                # Tokens allocated for Claude thinking
+    },
+
+    # Action mode settings (inherits from MODEL_DEFAULTS)
+    "ACTION": {
+        # Override any MODEL_DEFAULTS settings here
+    },
+
+    # Summary mode settings (inherits from MODEL_DEFAULTS)
+    "SUMMARY": {
+        "INITIAL_SUMMARY": true,     # Generate a summary on first turn
+        "SUMMARY_INTERVAL": 30       # Generate summary every N turns
+    }
+}
 ```
 
-Adjust these settings as needed for your specific use case.
+You can customize these settings by:
+1. Editing the generated `config.json` file directly
+2. Creating your own configuration file and specifying it with:
+   ```
+   python player.py --config my_config.json
+   ```
 
 ## Usage
 
