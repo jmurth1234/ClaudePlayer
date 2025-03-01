@@ -67,12 +67,12 @@ controls_mapping = {
 def take_screenshot(pyboy, set_last_screenshot_path=False):
     global start_time
     pil_image = pyboy.screen_image()
-    os.makedirs(f"./frames/{start_time}", exist_ok=True)
     path = f"./frames/{start_time}/screenshot-{time.time()}.png"
-
+    
     # make image 2x larger to make it easier to read (nearest neighbor interpolation)
     pil_image = pil_image.resize((pil_image.width * 4, pil_image.height * 4), resample=0)
-
+    
+    os.makedirs(f"./frames/{start_time}", exist_ok=True)
     pil_image.save(path)
 
     if set_last_screenshot_path:
