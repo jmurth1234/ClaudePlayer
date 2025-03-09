@@ -57,7 +57,7 @@ I've taken some imspiration from their official implementation by adding additio
 
 ## Configuration
 
-Configuration is loaded from `config.json` (created automatically on first run if not found). The settings are structured to avoid duplication between different modes:
+Configuration is loaded from `config.json` (created automatically on first run if not found). The settings are structured to avoid duplication between different modes. You can customize Claude's behavior by adding custom instructions that will be injected into the system prompt.
 
 ```json
 {
@@ -68,7 +68,9 @@ Configuration is loaded from `config.json` (created automatically on first run i
   "EMULATION_SPEED": 1,              // Emulation speed multiplier
   "CONTINUOUS_ANALYSIS_INTERVAL": 1.0, // Analysis frequency in seconds (continuous mode)
   "ENABLE_WRAPPER": false,           // Whether to enable the PyBoy game wrapper
+  "ENABLE_SOUND": false,             // Whether to enable sound (continuous mode only)
   "MAX_HISTORY_MESSAGES": 30,        // Max messages kept in context window
+  "CUSTOM_INSTRUCTIONS": "",         // Custom instructions injected into Claude's system prompt
   
   // Default settings for all model modes - inherited by ACTION and SUMMARY if not overridden
   "MODEL_DEFAULTS": {
@@ -97,7 +99,7 @@ You can customize these settings by:
 1. Editing the generated `config.json` file directly
 2. Creating your own configuration file and specifying it with:
    ```
-   python player.py --config my_config.json
+   python play.py --config my_config.json
    ```
 
 ## Usage
@@ -109,8 +111,19 @@ You can customize these settings by:
 
 2. Run the agent:
    ```
-   python player.py
+   python play.py
    ```
+
+   Or specify a custom configuration file:
+   ```
+   python play.py --config my_config.json
+   ```
+
+3. For setting up a saved state, you can use the included utility script:
+   ```
+   python emu_setup.py
+   ```
+   This script runs the emulator to help you create a saved state that you can reference in your configuration.
 
 ## Game Controls
 
