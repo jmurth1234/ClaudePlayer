@@ -77,6 +77,51 @@ class GameAgent:
         # Initialize chat history
         self.chat_history = []
     
+    def _limit_screenshots_in_history(self):
+        """
+        Limit the number of screenshots in chat history to MAX_SCREENSHOTS.
+        Only removes screenshots from user messages, keeping all other content intact.
+        """
+        # Count screenshots in the chat history
+        screenshot_count = 0
+        screenshot_indices = []
+        
+        # First pass: find all screenshots in user messages
+        for i, message in enumerate(self.chat_history):
+            # Only process user messages with multiple content items
+            if message["role"] == "user" and isinstance(message["content"], list):
+                for j, content_item in enumerate(message["content"]):
+                    # Check if the item is an image
+                    if isinstance(content_item, dict) and content_item.get("type") == "image":
+                        screenshot_count += 1
+                        # Store information about where this screenshot is
+                        screenshot_indices.append((i, j))
+        
+        # If we have more screenshots than allowed, remove the oldest ones
+        if screenshot_count > self.config.MAX_SCREENSHOTS:
+            # Calculate how many to remove
+            screenshots_to_remove = screenshot_count - self.config.MAX_SCREENSHOTS
+            screenshots_to_keep = screenshot_indices[screenshots_to_remove:]
+            
+            # Create a set of positions to keep for O(1) lookup
+            positions_to_keep = set((i, j) for i, j in screenshots_to_keep)
+            
+            # Second pass: create new history without the oldest screenshots
+            for i, message in enumerate(self.chat_history):
+                if message["role"] == "user" and isinstance(message["content"], list):
+                    # Filter the content to keep only non-screenshots or screenshots we want to keep
+                    new_content = []
+                    for j, content_item in enumerate(message["content"]):
+                        # Keep non-image content or screenshots we want to keep
+                        if not (isinstance(content_item, dict) and content_item.get("type") == "image") or (i, j) in positions_to_keep:
+                            new_content.append(content_item)
+                    
+                    # Update the message content
+                    message["content"] = new_content
+            
+            # Log the screenshot reduction
+            logging.info(f"Reduced screenshots in chat history from {screenshot_count} to {self.config.MAX_SCREENSHOTS}")
+    
     def prepare_turn_state(self):
         """Prepare the game state for a new turn or analysis."""
         # Increment turn counter
@@ -109,6 +154,9 @@ class GameAgent:
             user_message = {"role": "user", "content": [{"type": "text", "text": current_memory}] + user_content}
             self.chat_history.append(user_message)
             self.game_state.add_to_complete_history(user_message)
+            
+        # Apply the screenshot limit
+        self._limit_screenshots_in_history()
         
         # Check if we need to generate a summary
         if (self.config.SUMMARY["INITIAL_SUMMARY"] and self.game_state.turn_count == 1) or (self.game_state.turn_count % self.config.SUMMARY["SUMMARY_INTERVAL"] == 0 and self.game_state.turn_count > 0):
@@ -212,6 +260,10 @@ class GameAgent:
             }
             self.chat_history.append(tool_results_message)
             self.game_state.add_to_complete_history(tool_results_message)
+            
+            # Apply the screenshot limit after adding tool results
+            # Tool results may contain screenshots (e.g., from send_inputs)
+            self._limit_screenshots_in_history()
         
         # Limit chat history to max_messages (but keep complete history intact)
         if len(self.chat_history) > self.config.MAX_HISTORY_MESSAGES:

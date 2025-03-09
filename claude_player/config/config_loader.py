@@ -29,6 +29,7 @@ def load_config(config_file='config.json') -> ConfigClass:
         "ENABLE_WRAPPER": False,
         "ENABLE_SOUND": False,  # Whether to enable sound in continuous mode
         "MAX_HISTORY_MESSAGES": 30,
+        "MAX_SCREENSHOTS": 5,  # Maximum number of screenshots to keep in chat history
         "CUSTOM_INSTRUCTIONS": "",  # Custom instructions to inject into the system prompt
 
         # Common model settings - defaults that can be overridden

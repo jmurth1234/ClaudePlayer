@@ -70,6 +70,7 @@ Configuration is loaded from `config.json` (created automatically on first run i
   "ENABLE_WRAPPER": false,           // Whether to enable the PyBoy game wrapper
   "ENABLE_SOUND": false,             // Whether to enable sound (continuous mode only)
   "MAX_HISTORY_MESSAGES": 30,        // Max messages kept in context window
+  "MAX_SCREENSHOTS": 5,              // Max recent screenshots kept in chat history
   "CUSTOM_INSTRUCTIONS": "",         // Custom instructions injected into Claude's system prompt
   
   // Default settings for all model modes - inherited by ACTION and SUMMARY if not overridden

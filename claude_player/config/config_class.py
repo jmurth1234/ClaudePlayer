@@ -30,6 +30,7 @@ class ConfigClass:
     ENABLE_WRAPPER: bool
     ENABLE_SOUND: bool  # Whether to enable sound in continuous mode
     MAX_HISTORY_MESSAGES: int
+    MAX_SCREENSHOTS: int  # Maximum number of screenshots to keep in chat history
     CUSTOM_INSTRUCTIONS: Optional[str]  # Custom instructions to inject into the system prompt
     MODEL_DEFAULTS: ModelConfig
     ACTION: ActionConfig
