@@ -76,6 +76,7 @@ Configuration is loaded from `config.json` (created automatically on first run i
   "MODEL_DEFAULTS": {
     "MODEL": "claude-3-7-sonnet-20250219", // Claude model version
     "THINKING": true,                // Whether to enable Claude's thinking mode
+    "DYNAMIC_THINKING": false,       // Whether to allow Claude to toggle thinking on/off dynamically
     "EFFICIENT_TOOLS": true,         // Whether to use token-efficient-tools beta
     "MAX_TOKENS": 20000,             // Maximum tokens for Claude's response
     "THINKING_BUDGET": 16000         // Maximum tokens for Claude's thinking
@@ -147,6 +148,7 @@ The AI uses several tools to interact with the game:
 - `add_to_memory`: Store important information
 - `remove_from_memory`: Remove outdated information
 - `update_memory_item`: Update existing memory items
+- `toggle_thinking`: Dynamically enable or disable thinking capabilities (when both THINKING and DYNAMIC_THINKING are enabled)
 
 ## Debugging
 

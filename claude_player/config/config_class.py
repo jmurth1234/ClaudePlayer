@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional, TypedDict
 class ModelConfig(TypedDict, total=False):
     MODEL: str
     THINKING: bool
+    DYNAMIC_THINKING: bool
     EFFICIENT_TOOLS: bool
     MAX_TOKENS: int
     THINKING_BUDGET: int

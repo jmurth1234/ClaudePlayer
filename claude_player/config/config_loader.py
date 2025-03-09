@@ -35,6 +35,7 @@ def load_config(config_file='config.json') -> ConfigClass:
         "MODEL_DEFAULTS": {
             "MODEL": "claude-3-7-sonnet-20250219",
             "THINKING": True,
+            "DYNAMIC_THINKING": False,
             "EFFICIENT_TOOLS": True,
             "MAX_TOKENS": 20000,
             "THINKING_BUDGET": 16000,

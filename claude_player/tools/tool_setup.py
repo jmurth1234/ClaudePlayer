@@ -4,6 +4,7 @@ from pyboy import PyBoy
 from claude_player.state.game_state import GameState
 from claude_player.tools.tool_registry import ToolRegistry
 from claude_player.utils.game_utils import press_and_release_buttons, take_screenshot
+from claude_player.config.config_loader import Config    
 
 def setup_tool_registry(pyboy: PyBoy, game_state: GameState) -> ToolRegistry:
     """Set up the tool registry with all available tools."""
@@ -305,4 +306,31 @@ def setup_tool_registry(pyboy: PyBoy, game_state: GameState) -> ToolRegistry:
         
         return [{"type": "text", "text": response}]
     
+    # Only register toggle_thinking tool if both THINKING and DYNAMIC_THINKING are enabled
+    if Config and Config.MODEL_DEFAULTS.get("DYNAMIC_THINKING", False):
+        @registry.register(
+            name="toggle_thinking",
+            description="Toggle the thinking capability on or off. Use this to control whether you want to use your thinking capabilities.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "enabled": {
+                        "type": "boolean",
+                        "description": "Set to true to enable thinking, false to disable thinking"
+                    }
+                },
+                "required": ["enabled"]
+            }
+        )
+        def handle_toggle_thinking(self, tool_input: Dict[str, Any]) -> List[Dict[str, Any]]:
+            # Store runtime thinking state in GameState instead of modifying config
+            enabled = tool_input["enabled"]
+            self.game_state.runtime_thinking_enabled = enabled
+            
+            # Log the change
+            status = "enabled" if enabled else "disabled"
+            logging.info(f"Dynamic thinking control: Runtime thinking has been {status}")
+            
+            return [{"type": "text", "text": f"Thinking has been {status}. This will take effect on the next API request."}]
+
     return registry 

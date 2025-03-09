@@ -12,6 +12,7 @@ class GameState:
         self.turn_count = 0
         self.summary = ""
         self.complete_message_history = []  # Store ALL messages without truncation
+        self.runtime_thinking_enabled = True  # Store the runtime thinking state
 
         # New memory management attributes
         self.memory_categories = {

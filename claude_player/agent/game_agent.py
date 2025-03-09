@@ -63,6 +63,7 @@ class GameAgent:
         
         # Initialize game state
         self.game_state = GameState()
+        self.game_state.runtime_thinking_enabled = self.config.ACTION.get("THINKING", True)
         
         # Initialize tool registry
         self.tool_registry = setup_tool_registry(self.pyboy, self.game_state)
@@ -124,9 +125,16 @@ class GameAgent:
             # Get tools
             tools = self.tool_registry.get_tools()
             
+            # Create a copy of the config.ACTION dictionary so we can modify it
+            action_config = self.config.ACTION.copy()
+            
+            # Override the THINKING setting with the runtime value from GameState
+            if hasattr(self.game_state, 'runtime_thinking_enabled'):
+                action_config["THINKING"] = self.config.MODEL_DEFAULTS.get("THINKING", True) and self.game_state.runtime_thinking_enabled
+            
             # Send request to Claude
             message = self.claude.send_request(
-                self.config.ACTION, 
+                action_config, 
                 system_prompt, 
                 self.chat_history, 
                 tools
